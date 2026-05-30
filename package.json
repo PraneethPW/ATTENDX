@@ -1,0 +1,11 @@
+{
+  "name": "attendx",
+  "private": true,
+  "version": "1.0.0",
+  "description": "AttendX smart AI academic attendance and management system",
+  "scripts": {
+    "frontend": "npm --prefix frontend run dev",
+    "backend": "npm --prefix backend run dev",
+    "build": "npm --prefix frontend run build && npm --prefix backend run build"
+  }
+}
