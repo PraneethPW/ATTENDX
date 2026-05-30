@@ -53,6 +53,7 @@ const allowedOrigins = [
 const io = new Server(server, { cors: { origin: allowedOrigins, credentials: true } })
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } })
 
+app.set('trust proxy', 1)
 app.use(helmet())
 app.use(cors({ origin: allowedOrigins, credentials: true }))
 app.use(express.json({ limit: '2mb' }))
