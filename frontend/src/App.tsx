@@ -37,9 +37,16 @@ import type { FormEvent, ReactNode } from 'react'
 import type { Mesh } from 'three'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:4000'
+const getDeviceId = () => {
+  const existing = localStorage.getItem('attendx-device-id')
+  if (existing) return existing
+  const next = crypto.randomUUID()
+  localStorage.setItem('attendx-device-id', next)
+  return next
+}
 
 type Role = 'student' | 'faculty' | 'admin'
-type User = { id: string; name?: string; email: string; role: Role; department?: string }
+type User = { id: string; name?: string; email: string; role: Role; department?: string; phone?: string; profilePhoto?: string; twoFactorEnabled?: boolean }
 type Course = { id: string; title: string; code: string; room: string; facultyName?: string; latitude: number; longitude: number; radiusMeters: number }
 type Session = { id: string; courseId: string; qrToken: string; qrDataUrl: string; expiresAt: string; active: boolean }
 type AttendanceRecord = { id: string; courseId: string; studentName: string; status: string; riskScore: number; distanceMeters: number; createdAt: string }
@@ -51,8 +58,9 @@ const api = axios.create({ baseURL: API_URL })
 const AuthContext = createContext<{
   user: User | null
   token: string
-  login: (email: string, password: string) => Promise<void>
-  register: (payload: { name: string; email: string; password: string; role: Role; department: string }) => Promise<void>
+  login: (email: string, password: string, otp?: string, provider?: string) => Promise<void>
+  register: (payload: { name: string; email: string; password: string; role: Role; department: string; phone?: string }) => Promise<void>
+  setUser: (user: User) => void
   logout: () => void
 } | null>(null)
 
@@ -73,16 +81,16 @@ function AuthProvider({ children }: { children: ReactNode }) {
     api.defaults.headers.common.Authorization = token ? `Bearer ${token}` : ''
   }, [token])
 
-  async function login(email: string, password: string) {
-    const { data } = await api.post('/api/auth/login', { email, password })
+  async function login(email: string, password: string, otp?: string, provider?: string) {
+    const { data } = await api.post('/api/auth/login', { email, password, otp, provider, deviceId: getDeviceId() })
     setToken(data.token)
     setUser(data.user)
     localStorage.setItem('attendx-token', data.token)
     localStorage.setItem('attendx-user', JSON.stringify(data.user))
   }
 
-  async function register(payload: { name: string; email: string; password: string; role: Role; department: string }) {
-    const { data } = await api.post('/api/auth/register', payload)
+  async function register(payload: { name: string; email: string; password: string; role: Role; department: string; phone?: string }) {
+    const { data } = await api.post('/api/auth/register', { ...payload, deviceId: getDeviceId() })
     setToken(data.token)
     setUser(data.user)
     localStorage.setItem('attendx-token', data.token)
@@ -96,7 +104,7 @@ function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('attendx-user')
   }
 
-  return <AuthContext.Provider value={{ user, token, login, register, logout }}>{children}</AuthContext.Provider>
+  return <AuthContext.Provider value={{ user, token, login, register, setUser, logout }}>{children}</AuthContext.Provider>
 }
 
 function useApiData<T>(path: string, fallback: T, deps: unknown[] = []) {
@@ -178,26 +186,26 @@ function PublicShell({ children }: { children: ReactNode }) {
     ['Pricing', '/pricing'],
   ]
   return (
-    <div className="min-h-screen bg-[#f7f4ed] text-neutral-950">
-      <header className="sticky top-0 z-50 border-b border-neutral-950/10 bg-[#f7f4ed]/90 backdrop-blur-xl">
+    <div className="min-h-screen bg-[#f7f9ff] text-[#061a55]">
+      <header className="sticky top-0 z-50 border-b border-blue-950/10 bg-[#f7f9ff]/90 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
           <Link to="/" className="flex items-center gap-3">
-            <span className="grid h-10 w-10 place-items-center rounded-lg bg-neutral-950 text-[#f4c430]"><Fingerprint size={22} /></span>
+            <span className="grid h-10 w-10 place-items-center rounded-lg bg-[#061a55] text-[#2563eb]"><Fingerprint size={22} /></span>
             <span className="text-xl font-black">AttendX</span>
           </Link>
           <nav className="hidden items-center gap-1 md:flex">
-            {nav.map(([label, path]) => <NavLink key={path} to={path} className={({ isActive }) => `rounded-lg px-4 py-2 text-sm font-bold ${isActive ? 'bg-neutral-950 text-white' : 'text-neutral-600 hover:bg-white'}`}>{label}</NavLink>)}
+            {nav.map(([label, path]) => <NavLink key={path} to={path} className={({ isActive }) => `rounded-lg px-4 py-2 text-sm font-bold ${isActive ? 'bg-[#061a55] text-white' : 'text-neutral-600 hover:bg-white'}`}>{label}</NavLink>)}
           </nav>
           <div className="hidden items-center gap-2 md:flex">
-            <Link to={user ? '/app' : '/login'} className="rounded-lg bg-neutral-950 px-4 py-2 text-sm font-black text-white">{user ? 'Open app' : 'Login'}</Link>
-            <Link to="/signup" className="rounded-lg bg-[#f4c430] px-4 py-2 text-sm font-black text-neutral-950">Create account</Link>
+            <Link to={user ? '/app' : '/login'} className="rounded-lg bg-[#061a55] px-4 py-2 text-sm font-black text-white">{user ? 'Open app' : 'Login'}</Link>
+            <Link to="/signup" className="rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-black text-white">Create account</Link>
           </div>
-          <button className="rounded-lg border border-neutral-950/20 p-2 md:hidden" onClick={() => setOpen((v) => !v)}>{open ? <X /> : <Menu />}</button>
+          <button className="rounded-lg border border-blue-950/20 p-2 md:hidden" onClick={() => setOpen((v) => !v)}>{open ? <X /> : <Menu />}</button>
         </div>
         {open && (
-          <div className="border-t border-neutral-950/10 px-4 pb-4 md:hidden">
+          <div className="border-t border-blue-950/10 px-4 pb-4 md:hidden">
             {nav.map(([label, path]) => <Link key={path} to={path} onClick={() => setOpen(false)} className="block rounded-lg px-3 py-3 font-bold">{label}</Link>)}
-            <Link to={user ? '/app' : '/login'} className="mt-2 block rounded-lg bg-neutral-950 px-4 py-3 text-center font-black text-white">{user ? 'Open app' : 'Login'}</Link>
+            <Link to={user ? '/app' : '/login'} className="mt-2 block rounded-lg bg-[#061a55] px-4 py-3 text-center font-black text-white">{user ? 'Open app' : 'Login'}</Link>
           </div>
         )}
       </header>
@@ -210,22 +218,22 @@ function Landing() {
   return (
     <PublicShell>
       <main>
-        <section className="relative overflow-hidden border-b border-neutral-950/10 bg-[linear-gradient(135deg,#f7f4ed_0%,#fff9df_42%,#e9fbf8_100%)]">
+        <section className="relative overflow-hidden border-b border-blue-950/10 bg-[linear-gradient(135deg,#f7f4ed_0%,#fff9df_42%,#e9fbf8_100%)]">
           <div className="absolute inset-0 opacity-[0.18] [background-image:linear-gradient(#111_1px,transparent_1px),linear-gradient(90deg,#111_1px,transparent_1px)] [background-size:42px_42px]" />
           <div className="relative mx-auto grid min-h-[calc(100vh-74px)] max-w-7xl items-center gap-10 px-4 py-10 sm:px-6 lg:grid-cols-[1fr_.95fr] lg:px-8">
             <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="max-w-3xl">
-              <div className="mb-5 inline-flex items-center gap-2 rounded-lg border border-neutral-950/10 bg-white/90 px-3 py-2 text-sm font-black shadow-sm backdrop-blur">
-                <Sparkles size={16} className="text-teal-600" /> Built for live academic operations
+              <div className="mb-5 inline-flex items-center gap-2 rounded-lg border border-blue-950/10 bg-white/90 px-3 py-2 text-sm font-black shadow-sm backdrop-blur">
+                <Sparkles size={16} className="text-[#2563eb]" /> Built for live academic operations
               </div>
-              <h1 className="text-5xl font-black leading-[1.02] tracking-normal text-neutral-950 sm:text-6xl lg:text-7xl">Attendance that students cannot fake and faculty do not have to chase.</h1>
+              <h1 className="text-5xl font-black leading-[1.02] tracking-normal text-[#061a55] sm:text-6xl lg:text-7xl">Attendance that students cannot fake and faculty do not have to chase.</h1>
               <p className="mt-6 max-w-2xl text-lg leading-8 text-neutral-650">AttendX combines encrypted rotating QR codes, GPS geofencing, live faculty verification, secure submissions, audit logs, and AI risk summaries in one serious academic operating system.</p>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                <Link to="/signup" className="inline-flex items-center justify-center gap-2 rounded-lg bg-neutral-950 px-5 py-3 font-black text-white shadow-xl shadow-neutral-950/15">Start free <ArrowRight size={18} /></Link>
-                <Link to="/login" className="inline-flex items-center justify-center gap-2 rounded-lg border border-neutral-950/15 bg-white px-5 py-3 font-black text-neutral-950">Use demo accounts</Link>
+                <Link to="/signup" className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#061a55] px-5 py-3 font-black text-white shadow-xl shadow-blue-950/15">Start free <ArrowRight size={18} /></Link>
+                <Link to="/login" className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-950/15 bg-white px-5 py-3 font-black text-[#061a55]">Use demo accounts</Link>
               </div>
               <div className="mt-10 grid grid-cols-2 gap-3 lg:grid-cols-4">
                 {[['90s', 'QR expiry'], ['GPS', 'Haversine validation'], ['Live', 'Socket sync'], ['AI', 'OpenRouter-ready']].map(([value, label]) => (
-                  <div key={label} className="rounded-lg border border-neutral-950/10 bg-white/90 p-4 shadow-sm backdrop-blur">
+                  <div key={label} className="rounded-lg border border-blue-950/10 bg-white/90 p-4 shadow-sm backdrop-blur">
                     <div className="text-2xl font-black">{value}</div>
                     <div className="mt-1 text-xs font-bold uppercase text-neutral-500">{label}</div>
                   </div>
@@ -233,20 +241,20 @@ function Landing() {
               </div>
               <div className="mt-5 grid gap-3 sm:grid-cols-3">
                 {['SIS portal', 'QR engine', 'Risk desk'].map((item, index) => (
-                  <div key={item} className="rounded-lg border border-neutral-950/10 bg-neutral-950 p-4 text-white shadow-xl shadow-neutral-950/10">
-                    <div className={`mb-4 h-2 w-16 rounded-full ${index === 0 ? 'bg-[#f4c430]' : index === 1 ? 'bg-teal-400' : 'bg-rose-400'}`} />
+                  <div key={item} className="rounded-lg border border-blue-950/10 bg-[#061a55] p-4 text-white shadow-xl shadow-blue-950/10">
+                    <div className={`mb-4 h-2 w-16 rounded-full ${index === 0 ? 'bg-[#2563eb]' : index === 1 ? 'bg-teal-400' : 'bg-rose-400'}`} />
                     <p className="font-black">{item}</p>
                     <p className="mt-1 text-xs font-bold text-neutral-400">{['Student and faculty role views', 'Rotating encrypted sessions', 'Flags spoofing and proxy risk'][index]}</p>
                   </div>
                 ))}
               </div>
             </motion.div>
-            <div className="relative h-[500px] overflow-hidden rounded-lg border border-neutral-950/10 bg-neutral-950 shadow-2xl shadow-neutral-950/20 lg:h-[640px]">
+            <div className="relative h-[500px] overflow-hidden rounded-lg border border-blue-950/10 bg-[#061a55] shadow-2xl shadow-blue-950/20 lg:h-[640px]">
               <Hero3D />
               <div className="absolute left-4 top-4 w-[min(330px,calc(100%-32px))] rounded-lg border border-white/10 bg-white/10 p-4 text-white backdrop-blur">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-black text-neutral-300">Live session</p>
-                  <span className="rounded-lg bg-teal-300 px-2 py-1 text-xs font-black text-neutral-950">ACTIVE</span>
+                  <span className="rounded-lg bg-[#dbeafe] px-2 py-1 text-xs font-black text-[#061a55]">ACTIVE</span>
                 </div>
                 <p className="mt-3 text-2xl font-black">CSE-402 ML Lab</p>
                 <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs font-black">
@@ -256,7 +264,7 @@ function Landing() {
                 </div>
               </div>
               <div className="absolute bottom-4 left-4 right-4 grid gap-3 rounded-lg border border-white/10 bg-white/10 p-4 text-white backdrop-blur md:grid-cols-3">
-                {['QR encrypted', 'Geo verified', 'Audit logged'].map((item) => <div key={item} className="flex items-center gap-2 text-sm font-bold"><CheckCircle2 size={16} className="text-[#f4c430]" /> {item}</div>)}
+                {['QR encrypted', 'Geo verified', 'Audit logged'].map((item) => <div key={item} className="flex items-center gap-2 text-sm font-bold"><CheckCircle2 size={16} className="text-[#2563eb]" /> {item}</div>)}
               </div>
             </div>
           </div>
@@ -264,18 +272,18 @@ function Landing() {
         <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
           <div className="grid gap-4 lg:grid-cols-[.8fr_1.2fr]">
             <div>
-              <p className="text-sm font-black uppercase text-teal-700">The AttendX stack</p>
+              <p className="text-sm font-black uppercase text-[#1746d3]">The AttendX stack</p>
               <h2 className="mt-3 text-4xl font-black leading-tight sm:text-5xl">One product layer for every attendance moment.</h2>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               {[
-                [QrCode, 'Rotating QR sessions', 'Faculty generates encrypted short-lived QR codes for each class session.', 'bg-[#f4c430]'],
-                [MapPin, 'Geofence validation', 'Location is verified with Haversine distance before attendance is accepted.', 'bg-teal-300'],
+                [QrCode, 'Rotating QR sessions', 'Faculty generates encrypted short-lived QR codes for each class session.', 'bg-[#2563eb]'],
+                [MapPin, 'Geofence validation', 'Location is verified with Haversine distance before attendance is accepted.', 'bg-[#dbeafe]'],
                 [ShieldCheck, 'Security checks', 'JWT roles, rate limits, session validation, and audit logs keep attempts traceable.', 'bg-rose-300'],
                 [LayoutDashboard, 'SIS portals', 'Separate student and faculty portals keep workflows clear and role-specific.', 'bg-sky-300'],
               ].map(([Icon, title, text, tone]) => (
-                <article key={String(title)} className="group rounded-lg border border-neutral-950/10 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-xl">
-                  <div className={`grid h-12 w-12 place-items-center rounded-lg ${tone as string} text-neutral-950`}><Icon size={24} /></div>
+                <article key={String(title)} className="group rounded-lg border border-blue-950/10 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-xl">
+                  <div className={`grid h-12 w-12 place-items-center rounded-lg ${tone as string} text-[#061a55]`}><Icon size={24} /></div>
                   <h3 className="mt-5 text-xl font-black">{title as string}</h3>
                   <p className="mt-3 leading-7 text-neutral-600">{text as string}</p>
                 </article>
@@ -283,7 +291,7 @@ function Landing() {
             </div>
           </div>
         </section>
-        <section className="border-y border-neutral-950/10 bg-neutral-950 text-white">
+        <section className="border-y border-blue-950/10 bg-[#061a55] text-white">
           <div className="mx-auto grid max-w-7xl gap-5 px-4 py-14 sm:px-6 lg:grid-cols-3 lg:px-8">
             {[
               ['Student SIS', 'Timetable, attendance status, assignments, academic record, profile, and submissions.'],
@@ -291,7 +299,7 @@ function Landing() {
               ['AI operations', 'OpenRouter-ready insights for attendance risk, engagement patterns, and intervention notes.'],
             ].map(([title, text], index) => (
               <div key={title} className="rounded-lg border border-white/10 bg-white/[0.06] p-6">
-                <div className={`mb-8 h-1.5 w-24 rounded-full ${index === 0 ? 'bg-teal-300' : index === 1 ? 'bg-[#f4c430]' : 'bg-rose-300'}`} />
+                <div className={`mb-8 h-1.5 w-24 rounded-full ${index === 0 ? 'bg-[#dbeafe]' : index === 1 ? 'bg-[#2563eb]' : 'bg-rose-300'}`} />
                 <h3 className="text-2xl font-black">{title}</h3>
                 <p className="mt-4 leading-7 text-neutral-300">{text}</p>
               </div>
@@ -316,8 +324,8 @@ function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
     setLoading(true)
     setError('')
     try {
-      if (mode === 'login') await login(String(form.get('email')), String(form.get('password')))
-      else await register({ name: String(form.get('name')), email: String(form.get('email')), password: String(form.get('password')), role, department: String(form.get('department')) })
+      if (mode === 'login') await login(String(form.get('email')), String(form.get('password')), '123456', String(form.get('provider') || 'password'))
+      else await register({ name: String(form.get('name')), email: String(form.get('email')), password: String(form.get('password')), role, department: String(form.get('department')), phone: String(form.get('phone') || '') })
       navigate('/app')
     } catch (err) {
       setError(axios.isAxiosError(err) ? err.response?.data?.message || 'Action failed.' : 'Action failed.')
@@ -330,22 +338,25 @@ function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
     <PublicShell>
       <main className="mx-auto grid min-h-[calc(100vh-74px)] max-w-6xl items-center gap-8 px-4 py-10 sm:px-6 lg:grid-cols-[.9fr_1.1fr] lg:px-8">
         <section>
-          <div className="inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-black shadow-sm"><ShieldCheck size={16} className="text-teal-600" /> Secure academic identity</div>
+          <div className="inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-black shadow-sm"><ShieldCheck size={16} className="text-[#2563eb]" /> Secure academic identity</div>
           <h1 className="mt-5 text-4xl font-black sm:text-6xl">{mode === 'login' ? 'Welcome back to AttendX.' : 'Create your AttendX workspace.'}</h1>
           <p className="mt-5 text-lg leading-8 text-neutral-600">Demo accounts: `student@attendx.edu` or `faculty@attendx.edu`, password `password123`.</p>
         </section>
-        <section className="rounded-lg border border-neutral-950/10 bg-white p-6 shadow-xl">
+        <section className="rounded-lg border border-blue-950/10 bg-white p-6 shadow-xl">
           <div className="grid grid-cols-2 gap-2 rounded-lg bg-neutral-100 p-1">
-            <button onClick={() => setRole('student')} className={`rounded-lg px-4 py-3 font-black ${role === 'student' ? 'bg-neutral-950 text-white' : 'text-neutral-500'}`}>Student</button>
-            <button onClick={() => setRole('faculty')} className={`rounded-lg px-4 py-3 font-black ${role === 'faculty' ? 'bg-neutral-950 text-white' : 'text-neutral-500'}`}>Faculty</button>
+            <button onClick={() => setRole('student')} className={`rounded-lg px-4 py-3 font-black ${role === 'student' ? 'bg-[#061a55] text-white' : 'text-neutral-500'}`}>Student</button>
+            <button onClick={() => setRole('faculty')} className={`rounded-lg px-4 py-3 font-black ${role === 'faculty' ? 'bg-[#061a55] text-white' : 'text-neutral-500'}`}>Faculty</button>
           </div>
           <form onSubmit={submit} className="mt-6 grid gap-4">
             {mode === 'signup' && <Input name="name" label="Full name" placeholder="Aarav Sharma" />}
             <Input name="email" label="Email" placeholder={role === 'student' ? 'student@attendx.edu' : 'faculty@attendx.edu'} type="email" />
             <Input name="password" label="Password" placeholder="password123" type="password" />
+            <input type="hidden" name="provider" value="password" />
+            {mode === 'signup' && <Input name="phone" label="Phone" placeholder="+91 90000 00000" />}
             {mode === 'signup' && <Input name="department" label="Department" placeholder="CSE AI" />}
             {error && <div className="rounded-lg bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>}
-            <button disabled={loading} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#f4c430] px-5 py-3 font-black text-neutral-950 disabled:opacity-70">
+            {error.includes('New Device') && <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm font-black text-blue-800">New Device Detected<br />Faculty Approval Required</div>}
+            <button disabled={loading} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#2563eb] px-5 py-3 font-black text-white disabled:opacity-70">
               {loading && <Loader2 className="animate-spin" size={18} />} {mode === 'login' ? 'Login' : 'Create account'}
             </button>
           </form>
@@ -375,24 +386,24 @@ function AppShell({ children }: { children: ReactNode }) {
   ] as const
   const nav = user?.role === 'faculty' ? facultyNav : studentNav
   return (
-    <div className="min-h-screen bg-neutral-100 text-neutral-950 lg:grid lg:grid-cols-[280px_1fr]">
-      <aside className="hidden border-r border-neutral-950/10 bg-neutral-950 p-5 text-white lg:block">
-        <Link to="/" className="flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-lg bg-[#f4c430] text-neutral-950"><Fingerprint /></span><span className="text-xl font-black">AttendX</span></Link>
+    <div className="min-h-screen bg-neutral-100 text-[#061a55] lg:grid lg:grid-cols-[280px_1fr]">
+      <aside className="hidden border-r border-blue-950/10 bg-[#061a55] p-5 text-white lg:block">
+        <Link to="/" className="flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-lg bg-[#2563eb] text-[#061a55]"><Fingerprint /></span><span className="text-xl font-black">AttendX</span></Link>
         <div className="mt-8 rounded-lg border border-white/10 bg-white/5 p-4">
           <p className="font-black">{user?.name || user?.email}</p>
           <p className="mt-1 text-sm font-bold capitalize text-neutral-400">{user?.role} • {user?.department || 'Campus'}</p>
         </div>
         <nav className="mt-6 grid gap-1">
-          {nav.map(([label, path, Icon]) => <NavLink key={path as string} end={path === '/app'} to={path as string} className={({ isActive }) => `flex items-center gap-3 rounded-lg px-4 py-3 font-bold ${isActive ? 'bg-white text-neutral-950' : 'text-neutral-300 hover:bg-white/10'}`}><Icon size={18} /> {label as string}</NavLink>)}
+          {nav.map(([label, path, Icon]) => <NavLink key={path as string} end={path === '/app'} to={path as string} className={({ isActive }) => `flex items-center gap-3 rounded-lg px-4 py-3 font-bold ${isActive ? 'bg-white text-[#061a55]' : 'text-neutral-300 hover:bg-white/10'}`}><Icon size={18} /> {label as string}</NavLink>)}
         </nav>
         <button onClick={logout} className="mt-8 flex w-full items-center gap-3 rounded-lg border border-white/10 px-4 py-3 font-bold text-neutral-300"><LogOut size={18} /> Logout</button>
       </aside>
       <div>
-        <header className="sticky top-0 z-40 flex items-center justify-between border-b border-neutral-950/10 bg-white/90 px-4 py-3 backdrop-blur lg:hidden">
+        <header className="sticky top-0 z-40 flex items-center justify-between border-b border-blue-950/10 bg-white/90 px-4 py-3 backdrop-blur lg:hidden">
           <Link to="/" className="font-black">AttendX</Link>
-          <button onClick={() => setOpen((v) => !v)} className="rounded-lg border border-neutral-950/10 p-2">{open ? <X /> : <Menu />}</button>
+          <button onClick={() => setOpen((v) => !v)} className="rounded-lg border border-blue-950/10 p-2">{open ? <X /> : <Menu />}</button>
         </header>
-        {open && <div className="border-b border-neutral-950/10 bg-white p-4 lg:hidden">{nav.map(([label, path]) => <Link key={path as string} to={path as string} onClick={() => setOpen(false)} className="block rounded-lg px-3 py-3 font-bold">{label as string}</Link>)}</div>}
+        {open && <div className="border-b border-blue-950/10 bg-white p-4 lg:hidden">{nav.map(([label, path]) => <Link key={path as string} to={path as string} onClick={() => setOpen(false)} className="block rounded-lg px-3 py-3 font-bold">{label as string}</Link>)}</div>}
         {children}
       </div>
     </div>
@@ -448,7 +459,7 @@ function FacultyDashboard() {
               <Input name="radiusMeters" label="Geofence radius" placeholder="180" type="number" />
               <Input name="latitude" label="Latitude" placeholder="28.6139" />
               <Input name="longitude" label="Longitude" placeholder="77.209" />
-              <button className="inline-flex items-center justify-center gap-2 rounded-lg bg-neutral-950 px-4 py-3 font-black text-white sm:col-span-2"><Plus size={18} /> Add course</button>
+              <button className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#061a55] px-4 py-3 font-black text-white sm:col-span-2"><Plus size={18} /> Add course</button>
             </form>
           </Panel>
           <Panel title="Course operations">
@@ -496,13 +507,13 @@ function StudentToday({ courses }: { courses: Course[] }) {
     <Panel title="Today in SIS">
       <div className="grid gap-3">
         {courses.map((course, index) => (
-          <div key={course.id} className="grid gap-3 rounded-lg border border-neutral-950/10 bg-neutral-50 p-4 md:grid-cols-[120px_1fr_auto] md:items-center">
+          <div key={course.id} className="grid gap-3 rounded-lg border border-blue-950/10 bg-neutral-50 p-4 md:grid-cols-[120px_1fr_auto] md:items-center">
             <div className="font-black text-neutral-500">{index === 0 ? '09:00 AM' : '11:30 AM'}</div>
             <div>
               <p className="font-black">{course.title}</p>
               <p className="text-sm font-bold text-neutral-500">{course.code} • {course.room} • {course.facultyName}</p>
             </div>
-            <span className="rounded-lg bg-white px-3 py-2 text-sm font-black text-teal-700">{index === 0 ? 'QR opens soon' : 'Scheduled'}</span>
+            <span className="rounded-lg bg-white px-3 py-2 text-sm font-black text-[#1746d3]">{index === 0 ? 'QR opens soon' : 'Scheduled'}</span>
           </div>
         ))}
       </div>
@@ -511,11 +522,29 @@ function StudentToday({ courses }: { courses: Course[] }) {
 }
 
 function StudentProfileCard() {
-  const { user } = useAuth()
+  const { user, setUser } = useAuth()
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  async function saveProfile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    setSaving(true)
+    const { data } = await api.patch('/api/auth/profile', {
+      name: String(form.get('name')),
+      email: String(form.get('email')),
+      phone: String(form.get('phone')),
+      department: String(form.get('department')),
+      profilePhoto: String(form.get('profilePhoto')),
+    })
+    setUser(data.user)
+    localStorage.setItem('attendx-user', JSON.stringify(data.user))
+    setEditing(false)
+    setSaving(false)
+  }
   return (
     <Panel title="Student profile">
-      <div className="grid gap-4">
-        <div className="rounded-lg bg-neutral-950 p-5 text-white">
+      {!editing ? <div className="grid gap-4">
+        <div className="rounded-lg bg-[#061a55] p-5 text-white">
           <p className="text-sm font-bold text-neutral-400">Student ID</p>
           <p className="mt-1 text-2xl font-black">ATX-{user?.id.slice(0, 6).toUpperCase()}</p>
         </div>
@@ -530,7 +559,15 @@ function StudentProfileCard() {
             <span className="font-black">{value}</span>
           </div>
         ))}
-      </div>
+        <button onClick={() => setEditing(true)} className="rounded-lg bg-[#1746d3] px-4 py-3 font-black text-white">Edit profile</button>
+      </div> : <form onSubmit={saveProfile} className="grid gap-3">
+        <Input name="name" label="Name" placeholder={user?.name || 'Student'} />
+        <Input name="email" label="Email" placeholder={user?.email || 'student@attendx.edu'} type="email" />
+        <Input name="phone" label="Phone" placeholder={user?.phone || '+91 90000 00000'} />
+        <Input name="department" label="Details / Program" placeholder={user?.department || 'CSE AI'} />
+        <Input name="profilePhoto" label="Profile photo URL" placeholder={user?.profilePhoto || 'https://...'} />
+        <button disabled={saving} className="rounded-lg bg-[#1746d3] px-4 py-3 font-black text-white">{saving ? 'Saving...' : 'Save profile'}</button>
+      </form>}
     </Panel>
   )
 }
@@ -549,7 +586,7 @@ function FacultyRoster({ records }: { records: AttendanceRecord[] }) {
               <p className="text-sm font-bold text-neutral-500">{record.status}</p>
             </div>
             <span className="rounded-lg bg-white px-3 py-2 text-sm font-black">{record.distanceMeters}m</span>
-            <span className={`rounded-lg px-3 py-2 text-sm font-black ${record.riskScore > 50 ? 'bg-red-100 text-red-700' : 'bg-teal-100 text-teal-700'}`}>Risk {record.riskScore}</span>
+            <span className={`rounded-lg px-3 py-2 text-sm font-black ${record.riskScore > 50 ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-[#1746d3]'}`}>Risk {record.riskScore}</span>
           </div>
         ))}
       </div>
@@ -565,10 +602,10 @@ function FacultyReviewQueue({ assignments }: { assignments: Assignment[] }) {
     <Panel title="Review queue">
       <div className="grid gap-3">
         {rows.slice(0, 5).map((item) => (
-          <div key={item.id} className="rounded-lg border border-neutral-950/10 bg-neutral-50 p-4">
+          <div key={item.id} className="rounded-lg border border-blue-950/10 bg-neutral-50 p-4">
             <p className="font-black">{item.title}</p>
             <p className="mt-1 text-sm font-bold text-neutral-500">{item.fileName} • {item.status}</p>
-            <button className="mt-3 rounded-lg bg-neutral-950 px-3 py-2 text-sm font-black text-white">Review</button>
+            <button className="mt-3 rounded-lg bg-[#061a55] px-3 py-2 text-sm font-black text-white">Review</button>
           </div>
         ))}
       </div>
@@ -578,38 +615,46 @@ function FacultyReviewQueue({ assignments }: { assignments: Assignment[] }) {
 
 function CourseList({ courses, faculty, onChanged }: { courses: Course[]; faculty?: boolean; onChanged: () => void }) {
   const [activeSession, setActiveSession] = useState<Session | null>(null)
+  const [activeCourseId, setActiveCourseId] = useState('')
   const [loadingId, setLoadingId] = useState('')
 
-  async function generate(courseId: string) {
+  async function generate(courseId: string, silent = false) {
     setLoadingId(courseId)
     const { data } = await api.post('/api/attendance/sessions', { courseId })
     setActiveSession(data.session)
+    setActiveCourseId(courseId)
     setLoadingId('')
-    onChanged()
+    if (!silent) onChanged()
   }
+
+  useEffect(() => {
+    if (!faculty || !activeCourseId) return
+    const timer = window.setInterval(() => generate(activeCourseId, true), 15000)
+    return () => window.clearInterval(timer)
+  }, [faculty, activeCourseId])
 
   return (
     <div className="grid gap-3">
       {courses.map((course) => (
-        <article key={course.id} className="rounded-lg border border-neutral-950/10 bg-neutral-50 p-4">
+        <article key={course.id} className="rounded-lg border border-blue-950/10 bg-neutral-50 p-4">
           <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
             <div>
               <h3 className="text-lg font-black">{course.title}</h3>
               <p className="mt-1 text-sm font-bold text-neutral-500">{course.code} • {course.room} • {course.radiusMeters}m geofence</p>
             </div>
-            {faculty && <button onClick={() => generate(course.id)} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#f4c430] px-4 py-2 font-black text-neutral-950">{loadingId === course.id ? <Loader2 className="animate-spin" size={17} /> : <QrCode size={17} />} Generate QR</button>}
+            {faculty && <button onClick={() => generate(course.id)} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#2563eb] px-4 py-2 font-black text-white">{loadingId === course.id ? <Loader2 className="animate-spin" size={17} /> : <QrCode size={17} />} Generate QR</button>}
           </div>
         </article>
       ))}
       {activeSession && (
-        <div className="rounded-lg border border-neutral-950/10 bg-white p-4">
+        <div className="rounded-lg border border-blue-950/10 bg-white p-4">
           <h3 className="font-black">Live QR token</h3>
           <div className="mt-4 grid gap-4 md:grid-cols-[220px_1fr] md:items-center">
-            <img src={activeSession.qrDataUrl} alt="Attendance QR code" className="w-full max-w-[220px] rounded-lg border border-neutral-950/10" />
+            <img src={activeSession.qrDataUrl} alt="Attendance QR code" className="w-full max-w-[220px] rounded-lg border border-blue-950/10" />
             <div>
-              <p className="text-sm font-bold text-neutral-500">Students can scan this QR or paste the secure token in their attendance panel.</p>
-              <textarea readOnly value={activeSession.qrToken} className="mt-3 h-28 w-full rounded-lg border border-neutral-950/10 bg-neutral-50 p-3 text-xs" />
-              <p className="mt-2 text-sm font-bold text-teal-700">Expires at {new Date(activeSession.expiresAt).toLocaleTimeString()}</p>
+              <p className="text-sm font-bold text-neutral-500">Students can scan this QR or paste the secure token in their attendance panel. Token rotates automatically every 15 seconds and expires session-side.</p>
+              <textarea readOnly value={activeSession.qrToken} className="mt-3 h-28 w-full rounded-lg border border-blue-950/10 bg-neutral-50 p-3 text-xs" />
+              <p className="mt-2 text-sm font-bold text-[#1746d3]">Expires at {new Date(activeSession.expiresAt).toLocaleTimeString()}</p>
             </div>
           </div>
         </div>
@@ -621,6 +666,34 @@ function CourseList({ courses, faculty, onChanged }: { courses: Course[]; facult
 function AttendancePanel({ courses, onMarked }: { courses: Course[]; onMarked: () => void }) {
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
+  const [cameraOpen, setCameraOpen] = useState(false)
+  const [proofImage, setProofImage] = useState('')
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  async function startCamera() {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream
+      await videoRef.current.play()
+    }
+    setCameraOpen(true)
+    setMessage('Live camera opened. Gallery uploads are disabled for proof capture.')
+  }
+
+  function captureProof() {
+    const video = videoRef.current
+    const canvas = canvasRef.current
+    if (!video || !canvas) return
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    canvas.getContext('2d')?.drawImage(video, 0, 0)
+    setProofImage(canvas.toDataURL('image/jpeg', 0.82))
+    setMessage('Live proof captured with timestamp, GPS, user ID, session ID, and device ID on submit.')
+    const stream = video.srcObject as MediaStream | null
+    stream?.getTracks().forEach((track) => track.stop())
+    setCameraOpen(false)
+  }
 
   async function mark(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -633,6 +706,8 @@ function AttendancePanel({ courses, onMarked }: { courses: Course[]; onMarked: (
           qrToken: String(form.get('qrToken')),
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
+          proofImage,
+          deviceId: getDeviceId(),
         })
         setMessage(data.insideGeofence ? `Attendance marked. Distance: ${data.record.distanceMeters}m.` : 'Rejected outside geofence.')
         onMarked()
@@ -650,8 +725,20 @@ function AttendancePanel({ courses, onMarked }: { courses: Course[]; onMarked: (
   return (
     <Panel title="QR + GPS attendance">
       <form onSubmit={mark} className="grid gap-4">
-        <label className="grid gap-2 text-sm font-black text-neutral-600">Secure QR token<textarea name="qrToken" required className="h-32 rounded-lg border border-neutral-950/10 p-3 text-sm outline-none focus:border-teal-500" placeholder="Paste faculty QR token here" /></label>
-        <button disabled={busy} className="inline-flex items-center justify-center gap-2 rounded-lg bg-neutral-950 px-4 py-3 font-black text-white disabled:opacity-70">{busy ? <Loader2 className="animate-spin" size={18} /> : <MapPin size={18} />} Validate GPS and mark attendance</button>
+        <label className="grid gap-2 text-sm font-black text-neutral-600">Secure QR token<textarea name="qrToken" required className="h-32 rounded-lg border border-blue-950/10 p-3 text-sm outline-none focus:border-[#2563eb]" placeholder="Paste faculty QR token here" /></label>
+        <div className="rounded-lg border border-blue-100 bg-blue-50 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="font-black text-[#071b5f]">Late attendance proof</p>
+              <p className="text-sm font-bold text-blue-700">Camera-only capture. Gallery upload is not allowed.</p>
+            </div>
+            <button type="button" onClick={startCamera} className="rounded-lg bg-[#1746d3] px-4 py-2 font-black text-white">Open live camera</button>
+          </div>
+          {cameraOpen && <div className="mt-4 grid gap-3"><video ref={videoRef} className="max-h-64 w-full rounded-lg bg-black object-cover" muted playsInline /><button type="button" onClick={captureProof} className="rounded-lg bg-[#4f46e5] px-4 py-3 font-black text-white">Capture live proof</button></div>}
+          <canvas ref={canvasRef} className="hidden" />
+          {proofImage && <img src={proofImage} alt="Live attendance proof" className="mt-4 h-32 w-32 rounded-lg border border-blue-200 object-cover" />}
+        </div>
+        <button disabled={busy} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#061a55] px-4 py-3 font-black text-white disabled:opacity-70">{busy ? <Loader2 className="animate-spin" size={18} /> : <MapPin size={18} />} Validate GPS and mark attendance</button>
         {message && <div className="rounded-lg bg-neutral-100 p-3 text-sm font-bold">{message}</div>}
       </form>
       <div className="mt-5 grid gap-2">
@@ -678,14 +765,15 @@ function AssignmentsPanel({ courses, assignments, onUploaded }: { courses: Cours
   return (
     <Panel title="Assignment and capstone uploads">
       <form onSubmit={upload} className="grid gap-3">
-        <select name="courseId" required className="rounded-lg border border-neutral-950/10 p-3 font-bold">
+        <select name="courseId" required className="rounded-lg border border-blue-950/10 p-3 font-bold">
           <option value="">Select course</option>
           {courses.map((course) => <option key={course.id} value={course.id}>{course.title}</option>)}
         </select>
         <Input name="title" label="Submission title" placeholder="Capstone sprint 4" />
-        <input name="file" type="file" required className="rounded-lg border border-dashed border-neutral-950/20 bg-neutral-50 p-4 font-bold" />
-        <button className="rounded-lg bg-[#f4c430] px-4 py-3 font-black text-neutral-950">Upload securely</button>
-        {message && <p className="text-sm font-bold text-teal-700">{message}</p>}
+        <input name="file" type="file" accept=".pdf,.ppt,.pptx,.zip,.doc,.docx,.png,.jpg,.jpeg" required className="rounded-lg border border-dashed border-blue-950/20 bg-neutral-50 p-4 font-bold" />
+        <p className="text-xs font-bold text-blue-700">Supports assignments, mini projects, capstone reports, PPT/PPTX, and ZIP files.</p>
+        <button className="rounded-lg bg-[#2563eb] px-4 py-3 font-black text-white">Upload securely</button>
+        {message && <p className="text-sm font-bold text-[#1746d3]">{message}</p>}
       </form>
       <div className="mt-5 grid gap-2">
         {assignments.map((item) => <div key={item.id} className="rounded-lg bg-neutral-50 p-3"><p className="font-black">{item.title}</p><p className="text-sm font-bold text-neutral-500">{item.fileName} • {item.status}</p></div>)}
@@ -794,10 +882,10 @@ function SecurityPage() {
   return (
     <PublicShell>
       <main>
-        <section className="border-b border-neutral-950/10 bg-neutral-950 text-white">
+        <section className="border-b border-blue-950/10 bg-[#061a55] text-white">
           <div className="mx-auto grid max-w-7xl gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[.9fr_1.1fr] lg:px-8">
             <div>
-              <div className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm font-black"><ShieldCheck size={16} className="text-[#f4c430]" /> AttendX Trust Center</div>
+              <div className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm font-black"><ShieldCheck size={16} className="text-[#2563eb]" /> AttendX Trust Center</div>
               <h1 className="mt-5 text-4xl font-black leading-tight sm:text-6xl">Security controls for real classroom verification.</h1>
               <p className="mt-5 max-w-2xl text-lg leading-8 text-neutral-300">Attendance is treated as a high-trust event: cryptographic QR proof, GPS distance checks, role-scoped access, upload controls, and audit-ready operational history.</p>
             </div>
@@ -805,33 +893,33 @@ function SecurityPage() {
               {['Verification pipeline online', 'JWT role boundaries active', 'Upload gateway restricted', 'Audit log collecting events'].map((item, index) => (
                 <div key={item} className="flex items-center justify-between rounded-lg bg-white/10 p-4">
                   <span className="font-black">{item}</span>
-                  <span className={`rounded-lg px-3 py-1 text-xs font-black ${index < 3 ? 'bg-teal-300 text-neutral-950' : 'bg-[#f4c430] text-neutral-950'}`}>{index < 3 ? 'PASS' : 'SYNC'}</span>
+                  <span className={`rounded-lg px-3 py-1 text-xs font-black ${index < 3 ? 'bg-[#dbeafe] text-[#061a55]' : 'bg-[#2563eb] text-[#061a55]'}`}>{index < 3 ? 'PASS' : 'SYNC'}</span>
                 </div>
               ))}
             </div>
           </div>
         </section>
         <section className="mx-auto grid max-w-7xl gap-5 px-4 py-14 sm:px-6 lg:grid-cols-[.85fr_1.15fr] lg:px-8">
-          <div className="rounded-lg border border-neutral-950/10 bg-white p-5 shadow-sm">
+          <div className="rounded-lg border border-blue-950/10 bg-white p-5 shadow-sm">
             <h2 className="text-2xl font-black">Control explorer</h2>
             <div className="mt-5 grid gap-2">
               {controls.map(([name, _text, status], index) => (
-                <button key={name} onClick={() => setSelected(index)} className={`flex items-center justify-between rounded-lg border px-4 py-3 text-left font-black ${selected === index ? 'border-neutral-950 bg-neutral-950 text-white' : 'border-neutral-950/10 bg-neutral-50 text-neutral-700'}`}>
+                <button key={name} onClick={() => setSelected(index)} className={`flex items-center justify-between rounded-lg border px-4 py-3 text-left font-black ${selected === index ? 'border-blue-950 bg-[#061a55] text-white' : 'border-blue-950/10 bg-neutral-50 text-neutral-700'}`}>
                   {name}
                   <span className="text-xs">{status}</span>
                 </button>
               ))}
             </div>
           </div>
-          <div className="rounded-lg border border-neutral-950/10 bg-white p-6 shadow-sm">
-            <LockKeyhole className="text-teal-600" size={34} />
+          <div className="rounded-lg border border-blue-950/10 bg-white p-6 shadow-sm">
+            <LockKeyhole className="text-[#2563eb]" size={34} />
             <h2 className="mt-5 text-3xl font-black">{controls[selected][0]}</h2>
             <p className="mt-4 text-lg leading-8 text-neutral-600">{controls[selected][1]}</p>
             <div className="mt-8 grid gap-3 md:grid-cols-3">
               {['Implementation', 'Monitoring', 'Incident response'].map((item) => (
                 <div key={item} className="rounded-lg bg-neutral-50 p-4">
                   <p className="text-sm font-black uppercase text-neutral-500">{item}</p>
-                  <p className="mt-2 font-black text-teal-700">Configured</p>
+                  <p className="mt-2 font-black text-[#1746d3]">Configured</p>
                 </div>
               ))}
             </div>
@@ -844,7 +932,7 @@ function SecurityPage() {
               ['Compliance evidence', 'Every login, session, upload, and attendance action becomes an audit event.'],
               ['Deployment ready', 'Neon Postgres, JWT secrets, OpenRouter key, and client origin are environment-driven.'],
             ].map(([title, text]) => (
-              <article key={title} className="rounded-lg border border-neutral-950/10 bg-white p-6 shadow-sm">
+              <article key={title} className="rounded-lg border border-blue-950/10 bg-white p-6 shadow-sm">
                 <h3 className="text-xl font-black">{title}</h3>
                 <p className="mt-3 leading-7 text-neutral-600">{text}</p>
               </article>
@@ -873,16 +961,16 @@ function PricingPage() {
       <main>
         <section className="mx-auto grid max-w-7xl gap-8 px-4 py-14 sm:px-6 lg:grid-cols-[.9fr_1.1fr] lg:px-8">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-black shadow-sm"><Zap size={16} className="text-teal-600" /> Pricing calculator</div>
+            <div className="inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-black shadow-sm"><Zap size={16} className="text-[#2563eb]" /> Pricing calculator</div>
             <h1 className="mt-5 text-4xl font-black leading-tight sm:text-6xl">Scale AttendX by campus size, not guesswork.</h1>
             <p className="mt-5 max-w-2xl text-lg leading-8 text-neutral-600">Estimate monthly platform cost for students, faculty, AI insights, QR sessions, uploads, and analytics before choosing a plan.</p>
           </div>
-          <div className="rounded-lg border border-neutral-950/10 bg-white p-6 shadow-xl">
+          <div className="rounded-lg border border-blue-950/10 bg-white p-6 shadow-xl">
             <div className="flex items-center justify-between gap-3">
               <p className="font-black">Billing</p>
               <div className="grid grid-cols-2 rounded-lg bg-neutral-100 p-1">
-                <button onClick={() => setAnnual(false)} className={`rounded-lg px-4 py-2 text-sm font-black ${!annual ? 'bg-neutral-950 text-white' : 'text-neutral-500'}`}>Monthly</button>
-                <button onClick={() => setAnnual(true)} className={`rounded-lg px-4 py-2 text-sm font-black ${annual ? 'bg-neutral-950 text-white' : 'text-neutral-500'}`}>Annual -18%</button>
+                <button onClick={() => setAnnual(false)} className={`rounded-lg px-4 py-2 text-sm font-black ${!annual ? 'bg-[#061a55] text-white' : 'text-neutral-500'}`}>Monthly</button>
+                <button onClick={() => setAnnual(true)} className={`rounded-lg px-4 py-2 text-sm font-black ${annual ? 'bg-[#061a55] text-white' : 'text-neutral-500'}`}>Annual -18%</button>
               </div>
             </div>
             <div className="mt-6 grid gap-4">
@@ -890,7 +978,7 @@ function PricingPage() {
               <label className="grid gap-2 font-black">Faculty: {faculty}<input type="range" min="5" max="500" step="5" value={faculty} onChange={(e) => setFaculty(Number(e.target.value))} /></label>
               <label className="flex items-center justify-between rounded-lg bg-neutral-50 p-4 font-black">OpenRouter AI insights<input type="checkbox" checked={ai} onChange={(e) => setAi(e.target.checked)} className="h-5 w-5" /></label>
             </div>
-            <div className="mt-6 rounded-lg bg-neutral-950 p-5 text-white">
+            <div className="mt-6 rounded-lg bg-[#061a55] p-5 text-white">
               <p className="text-sm font-bold text-neutral-400">Estimated monthly cost</p>
               <p className="mt-1 text-4xl font-black">₹{total.toLocaleString('en-IN')}</p>
               <p className="mt-2 text-sm font-bold text-neutral-400">Includes QR attendance, SIS portals, uploads, analytics, and security audit logs.</p>
@@ -899,15 +987,15 @@ function PricingPage() {
         </section>
         <section className="mx-auto grid max-w-7xl gap-4 px-4 pb-16 sm:px-6 md:grid-cols-3 lg:px-8">
           {plans.map(([plan, desc, price, features], index) => (
-            <article key={plan} className={`rounded-lg border p-6 shadow-sm ${index === 1 ? 'border-neutral-950 bg-neutral-950 text-white' : 'border-neutral-950/10 bg-white'}`}>
-              <p className="text-sm font-black uppercase text-teal-600">{index === 1 ? 'Most popular' : 'Plan'}</p>
+            <article key={plan} className={`rounded-lg border p-6 shadow-sm ${index === 1 ? 'border-blue-950 bg-[#061a55] text-white' : 'border-blue-950/10 bg-white'}`}>
+              <p className="text-sm font-black uppercase text-[#2563eb]">{index === 1 ? 'Most popular' : 'Plan'}</p>
               <h2 className="mt-3 text-3xl font-black">{plan}</h2>
               <p className={`mt-3 leading-7 ${index === 1 ? 'text-neutral-300' : 'text-neutral-600'}`}>{desc}</p>
               <p className="mt-6 text-4xl font-black">{price}</p>
               <div className="mt-6 grid gap-3">
-                {features.map((feature) => <div key={feature} className="flex items-center gap-2 font-bold"><CheckCircle2 size={17} className="text-teal-500" /> {feature}</div>)}
+                {features.map((feature) => <div key={feature} className="flex items-center gap-2 font-bold"><CheckCircle2 size={17} className="text-[#2563eb]" /> {feature}</div>)}
               </div>
-              <Link to="/signup" className={`mt-7 inline-flex w-full items-center justify-center rounded-lg px-4 py-3 font-black ${index === 1 ? 'bg-[#f4c430] text-neutral-950' : 'bg-neutral-950 text-white'}`}>Choose {plan}</Link>
+              <Link to="/signup" className={`mt-7 inline-flex w-full items-center justify-center rounded-lg px-4 py-3 font-black ${index === 1 ? 'bg-[#2563eb] text-white' : 'bg-[#061a55] text-white'}`}>Choose {plan}</Link>
             </article>
           ))}
         </section>
@@ -918,8 +1006,8 @@ function PricingPage() {
 
 function WorkspaceHeader({ eyebrow, title, subtitle }: { eyebrow: string; title: string; subtitle: string }) {
   return (
-    <section className="border-b border-neutral-950/10 bg-white px-4 py-7 sm:px-6">
-      <div className="inline-flex items-center gap-2 rounded-lg bg-neutral-100 px-3 py-2 text-sm font-black"><Layers3 size={16} className="text-teal-600" /> {eyebrow}</div>
+    <section className="border-b border-blue-950/10 bg-white px-4 py-7 sm:px-6">
+      <div className="inline-flex items-center gap-2 rounded-lg bg-neutral-100 px-3 py-2 text-sm font-black"><Layers3 size={16} className="text-[#2563eb]" /> {eyebrow}</div>
       <h1 className="mt-4 max-w-4xl text-3xl font-black sm:text-5xl">{title}</h1>
       <p className="mt-3 max-w-2xl leading-7 text-neutral-600">{subtitle}</p>
     </section>
@@ -927,7 +1015,7 @@ function WorkspaceHeader({ eyebrow, title, subtitle }: { eyebrow: string; title:
 }
 
 function Metrics({ metrics }: { metrics: [string, string | number, typeof Activity][] }) {
-  return <div className="grid gap-4 md:grid-cols-4">{metrics.map(([label, value, Icon]) => <div key={label} className="rounded-lg border border-neutral-950/10 bg-white p-5 shadow-sm"><Icon className="text-teal-600" /><p className="mt-5 text-sm font-black uppercase text-neutral-500">{label}</p><p className="mt-1 text-3xl font-black">{value}</p></div>)}</div>
+  return <div className="grid gap-4 md:grid-cols-4">{metrics.map(([label, value, Icon]) => <div key={label} className="rounded-lg border border-blue-950/10 bg-white p-5 shadow-sm"><Icon className="text-[#2563eb]" /><p className="mt-5 text-sm font-black uppercase text-neutral-500">{label}</p><p className="mt-1 text-3xl font-black">{value}</p></div>)}</div>
 }
 
 function LiveRecords({ records }: { records: AttendanceRecord[] }) {
@@ -936,7 +1024,7 @@ function LiveRecords({ records }: { records: AttendanceRecord[] }) {
       <div className="overflow-x-auto">
         <table className="w-full min-w-[680px] text-left text-sm">
           <thead><tr className="text-neutral-500"><th className="py-3">Student</th><th>Status</th><th>Distance</th><th>Risk</th><th>Time</th></tr></thead>
-          <tbody>{records.map((item) => <tr key={item.id} className="border-t border-neutral-950/10"><td className="py-4 font-black">{item.studentName}</td><td className="font-bold">{item.status}</td><td className="font-bold">{item.distanceMeters}m</td><td className="font-bold">{item.riskScore}</td><td className="font-bold">{new Date(item.createdAt).toLocaleString()}</td></tr>)}</tbody>
+          <tbody>{records.map((item) => <tr key={item.id} className="border-t border-blue-950/10"><td className="py-4 font-black">{item.studentName}</td><td className="font-bold">{item.status}</td><td className="font-bold">{item.distanceMeters}m</td><td className="font-bold">{item.riskScore}</td><td className="font-bold">{new Date(item.createdAt).toLocaleString()}</td></tr>)}</tbody>
         </table>
         {!records.length && <p className="rounded-lg bg-neutral-50 p-4 text-sm font-bold text-neutral-500">No records yet. Generate a QR from faculty, then mark attendance from a student account.</p>}
       </div>
@@ -945,11 +1033,11 @@ function LiveRecords({ records }: { records: AttendanceRecord[] }) {
 }
 
 function Panel({ title, children }: { title: string; children: ReactNode }) {
-  return <section className="rounded-lg border border-neutral-950/10 bg-white p-5 shadow-sm"><h2 className="mb-4 flex items-center gap-2 text-xl font-black"><ClipboardList size={20} className="text-teal-600" /> {title}</h2>{children}</section>
+  return <section className="rounded-lg border border-blue-950/10 bg-white p-5 shadow-sm"><h2 className="mb-4 flex items-center gap-2 text-xl font-black"><ClipboardList size={20} className="text-[#2563eb]" /> {title}</h2>{children}</section>
 }
 
 function Input({ label, name, placeholder, type = 'text' }: { label: string; name: string; placeholder: string; type?: string }) {
-  return <label className="grid gap-2 text-sm font-black text-neutral-600">{label}<input required name={name} type={type} placeholder={placeholder} className="rounded-lg border border-neutral-950/10 bg-white px-4 py-3 text-neutral-950 outline-none focus:border-teal-500" /></label>
+  return <label className="grid gap-2 text-sm font-black text-neutral-600">{label}<input required name={name} type={type} placeholder={placeholder} className="rounded-lg border border-blue-950/10 bg-white px-4 py-3 text-[#061a55] outline-none focus:border-[#2563eb]" /></label>
 }
 
 function AppRoutes() {
@@ -984,3 +1072,4 @@ export default function App() {
     </AuthProvider>
   )
 }
+
