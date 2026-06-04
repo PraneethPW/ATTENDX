@@ -712,7 +712,11 @@ function AttendancePanel({ courses, onMarked }: { courses: Course[]; onMarked: (
         setMessage(data.insideGeofence ? `Attendance marked. Distance: ${data.record.distanceMeters}m.` : 'Rejected outside geofence.')
         onMarked()
       } catch (err) {
-        setMessage(axios.isAxiosError(err) ? err.response?.data?.message || 'Could not mark attendance.' : 'Could not mark attendance.')
+        if (axios.isAxiosError(err) && err.response?.data?.record) {
+          setMessage(err.response.data.insideGeofence ? `Attendance marked. Distance: ${err.response.data.record.distanceMeters}m.` : `Location submitted but outside geofence. Distance: ${err.response.data.record.distanceMeters}m.`)
+        } else {
+          setMessage(axios.isAxiosError(err) ? err.response?.data?.message || 'Could not mark attendance.' : 'Could not mark attendance.')
+        }
       } finally {
         setBusy(false)
       }
