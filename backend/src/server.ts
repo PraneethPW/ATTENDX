@@ -189,13 +189,20 @@ app.get('/api/attendance/sessions/latest', auth, (req, res) => {
 app.post('/api/attendance/mark', auth, roles('student'), (req, res) => {
   const user = res.locals.user as AuthUser
   const body = z.object({ qrToken: z.string(), latitude: z.number(), longitude: z.number(), proofImage: z.string().optional(), deviceId: z.string().optional() }).parse(req.body)
+  let qrToken = body.qrToken.trim()
+  try {
+    const url = new URL(qrToken)
+    qrToken = url.searchParams.get('qrToken') || url.searchParams.get('token') || qrToken
+  } catch {
+    qrToken = qrToken.replace(/\s+/g, '')
+  }
   let decoded: { courseId: string; exp: string }
   try {
-    decoded = decryptQR(body.qrToken)
+    decoded = decryptQR(qrToken)
   } catch {
     return res.status(400).json({ message: 'Invalid QR token.' })
   }
-  const session = sessions.find((item) => item.qrToken === body.qrToken && item.active)
+  const session = sessions.find((item) => item.qrToken === qrToken && item.active)
   const course = courses.find((item) => item.id === decoded.courseId)
   const expired = new Date(decoded.exp).getTime() < Date.now()
   if (!session || !course) return res.status(400).json({ message: 'QR code invalid. Ask faculty to generate a new one.' })

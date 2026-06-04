@@ -703,7 +703,7 @@ function AttendancePanel({ courses, onMarked }: { courses: Course[]; onMarked: (
     navigator.geolocation.getCurrentPosition(async (position) => {
       try {
         const { data } = await api.post('/api/attendance/mark', {
-          qrToken: String(form.get('qrToken')),
+          qrToken: String(form.get('qrToken')).trim(),
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
           proofImage,
